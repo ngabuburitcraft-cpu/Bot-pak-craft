@@ -68,3 +68,16 @@ app.get("/", (req, res) => {
 app.listen(PORT, () => {
   console.log("Web server running on port " + PORT);
 });
+const { state, saveCreds } = await useMultiFileAuthState("auth");
+
+const sock = makeWASocket({
+  auth: state,
+});
+
+sock.ev.on("creds.update", saveCreds);
+
+if (!sock.authState.creds.registered) {
+  const phoneNumber = "62881023660529";
+  const code = await sock.requestPairingCode(phoneNumber);
+  console.log("PAIRING CODE:", code);
+}
