@@ -23,9 +23,12 @@ async function startBot() {
     const { connection, qr, lastDisconnect } = update;
 
     if (qr) {
-      console.log("📱 Scan QR ini:");
-      const qrCode = await QRCode.toString(qr, { type: "terminal" });
-      console.log(qrCode);
+      console.log("📱 QR Code Image:");
+
+      const qrImage = await QRCode.toDataURL(qr);
+
+      console.log("Open this link in browser:");
+      console.log(qrImage);
     }
 
     if (connection === "connecting") {
