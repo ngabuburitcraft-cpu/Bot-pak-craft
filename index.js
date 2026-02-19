@@ -1,30 +1,39 @@
 import makeWASocket, {
   useMultiFileAuthState,
-  DisconnectReason
+  DisconnectReason,
+  fetchLatestBaileysVersion
 } from "@whiskeysockets/baileys";
 import express from "express";
 import pino from "pino";
+import QRCode from "qrcode";
 
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState("auth");
+  const { version } = await fetchLatestBaileysVersion();
 
   const sock = makeWASocket({
+    version,
     logger: pino({ level: "silent" }),
-    auth: state,
-    printQRInTerminal: true // 🔥 pakai built-in QR
+    auth: state
   });
 
   sock.ev.on("creds.update", saveCreds);
 
-  sock.ev.on("connection.update", (update) => {
-    const { connection, lastDisconnect } = update;
+  sock.ev.on("connection.update", async (update) => {
+    const { connection, qr, lastDisconnect } = update;
+
+    if (qr) {
+      console.log("📱 Scan QR ini:");
+      const qrCode = await QRCode.toString(qr, { type: "terminal" });
+      console.log(qrCode);
+    }
 
     if (connection === "connecting") {
       console.log("🔄 Connecting to WhatsApp...");
     }
 
     if (connection === "open") {
-      console.log("✅ Bot connected to WhatsApp");
+      console.log("✅ Bot connected!");
     }
 
     if (connection === "close") {
@@ -51,5 +60,5 @@ app.get("/", (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log("🌐 Web server running on port " + PORT);
+  console.log("🌐 Server running on port " + PORT);
 });
