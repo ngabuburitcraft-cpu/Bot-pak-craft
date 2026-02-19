@@ -4,7 +4,6 @@ import makeWASocket, {
 } from "@whiskeysockets/baileys";
 import express from "express";
 import pino from "pino";
-import qrcode from "qrcode-terminal";
 
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState("auth");
@@ -12,17 +11,16 @@ async function startBot() {
   const sock = makeWASocket({
     logger: pino({ level: "silent" }),
     auth: state,
-    printQRInTerminal: false
+    printQRInTerminal: true // 🔥 pakai built-in QR
   });
 
   sock.ev.on("creds.update", saveCreds);
 
   sock.ev.on("connection.update", (update) => {
-    const { connection, qr, lastDisconnect } = update;
+    const { connection, lastDisconnect } = update;
 
-    if (qr) {
-      console.log("📱 Scan QR ini:");
-      qrcode.generate(qr, { small: true });
+    if (connection === "connecting") {
+      console.log("🔄 Connecting to WhatsApp...");
     }
 
     if (connection === "open") {
@@ -33,6 +31,8 @@ async function startBot() {
       const shouldReconnect =
         lastDisconnect?.error?.output?.statusCode !==
         DisconnectReason.loggedOut;
+
+      console.log("❌ Connection closed. Reconnecting:", shouldReconnect);
 
       if (shouldReconnect) {
         startBot();
