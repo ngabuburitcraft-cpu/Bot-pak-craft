@@ -1,20 +1,39 @@
 {
-  "name": "botwa",
+  "name": "botpakcraft",
   "version": "1.0.0",
-  "description": "WhatsApp Bot Railway Full Features",
-  "type": "module",
+  "description": "Bot WhatsApp PakCraft dengan auto welcome, stiker statis & bergerak, dan TikTok downloader",
   "main": "index.js",
+  "type": "module",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "keywords": [
+    "whatsapp",
+    "bot",
+    "baileys",
+    "tiktok",
+    "sticker",
+    "animated-sticker",
+    "auto-welcome"
+  ],
+  "author": "Febri",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "^6.6.0",
+    "@whiskeysockets/baileys": "^5.0.2",
+    "axios": "^1.6.0",
     "express": "^4.18.2",
-    "pino": "^8.0.0",
-    "qrcode": "^1.5.3",
-    "axios": "^1.6.0"
+    "ffmpeg-static": "^5.1.0",
+    "fluent-ffmpeg": "^2.1.2",
+    "pino": "^8.15.0",
+    "qrcode-terminal": "^0.12.0",
+    "gif-to-webp-bin": "^2.0.0",
+    "webp-converter": "^2.2.5"
   },
-  "engines": {
-    "node": "20.x"
+  "devDependencies": {
+    "nodemon": "^3.0.2"
   }
 }
