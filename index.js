@@ -1,114 +1,104 @@
-import makeWASocket, { useMultiFileAuthState } from '@whiskeysockets/baileys';
-import fs from 'fs';
-import fsExtra from 'fs-extra';
-import qrcode from 'qrcode';
-import axios from 'axios';
+import makeWASocket, { useMultiFileAuthState, DisconnectReason } from '@whiskeysockets/baileys';
+import qrcode from 'qrcode-terminal';
+import fs from 'fs-extra';
+import fetch from 'node-fetch';
 import TikTokScraper from 'tiktok-scraper';
-import ffmpeg from 'fluent-ffmpeg';
-import ffmpegPath from 'ffmpeg-static';
 
-ffmpeg.setFfmpegPath(ffmpegPath);
-
-const ownerNumber = "6282258735149"; // Owner Febri
-const botName = "Pak CRAFT";
+const ownerNumber = '6282258735149'; // Owner: Febri
+const botName = 'Pak Craft';
 
 async function startBot() {
-    const { state, saveCreds } = await useMultiFileAuthState('auth');
+  const { state, saveCreds } = await useMultiFileAuthState('auth');
 
-    const sock = makeWASocket({ auth: state, printQRInTerminal: false });
+  const sock = makeWASocket({
+    auth: state,
+    printQRInTerminal: false // deprecated, QR akan ditampilkan manual
+  });
 
-    sock.ev.on('creds.update', saveCreds);
+  sock.ev.on('creds.update', saveCreds);
 
-    // QR handling
-    sock.ev.on('connection.update', async (update) => {
-        const { connection, qr } = update;
-        if (qr) {
-            const qrPath = './qr.png';
-            await qrcode.toFile(qrPath, qr);
-            console.log(`QR code saved to ${qrPath}. Scan with WhatsApp!`);
-        }
-        if (connection === 'open') console.log(`${botName} connected!`);
-        if (connection === 'close') {
-            console.log('Connection closed. Reconnecting...');
-            startBot();
-        }
-    });
+  sock.ev.on('connection.update', (update) => {
+    const { connection, lastDisconnect, qr } = update;
 
-    sock.ev.on('messages.upsert', async ({ messages }) => {
-        const msg = messages[0];
-        if (!msg.message || msg.key.fromMe) return;
+    if (qr) {
+      // QR akan dicetak di terminal sebagai teks
+      console.log('Scan QR ini untuk login:');
+      qrcode.generate(qr, { small: true });
+    }
 
-        const from = msg.key.remoteJid;
-        const text = msg.message.conversation || '';
+    if (connection === 'close') {
+      const status = lastDisconnect?.error?.output?.statusCode;
+      console.log('❌ Koneksi terputus, reconnecting...', status);
+      if (status !== DisconnectReason.loggedOut) {
+        startBot();
+      }
+    }
 
-        // === Commands ===
-        // Menu
-        if (text === '!menu') {
-            const menuText = `
-🌟 *${botName} Menu* 🌟
+    if (connection === 'open') {
+      console.log(`✅ ${botName} sudah terhubung!`);
+    }
+  });
 
-1️⃣ *!sticker* - Kirim gambar/video untuk dijadikan sticker
-2️⃣ *!tiktok <url>* - Download video TikTok tanpa watermark
-3️⃣ *!owner* - Info owner bot
-4️⃣ *!info* - Info bot & komunitas
-5️⃣ *!menu* - Tampilkan menu ini
+  // Menu sederhana
+  sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    const msg = messages[0];
+    if (!msg.message || msg.key.fromMe) return;
 
+    const from = msg.key.remoteJid;
+    const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
+
+    // Menu utama
+    if (text === '!menu') {
+      const menu = `
+📌 *${botName} - Bot Komunitas Ngabuburit CRAFT*
 Owner: Febri
-Komunitas: Ngabuburit CRAFT
-            `;
-            await sock.sendMessage(from, { text: menuText });
-        }
+⚡ Fitur tersedia:
+1. !tiktok <url> - Download video TikTok
+2. !stiker <reply image> - Buat stiker dari gambar
+3. !info - Info bot dan komunitas
+      `;
+      await sock.sendMessage(from, { text: menu });
+    }
 
-        // Sticker
-        if (text.startsWith('!sticker')) {
-            if (msg.message.imageMessage || msg.message.videoMessage) {
-                const stream = await sock.downloadMediaMessage(msg);
-                const inputPath = './input';
-                fsExtra.ensureDirSync(inputPath);
-                const fileName = `${inputPath}/media`;
-                fs.writeFileSync(fileName, stream);
+    // Info bot
+    if (text === '!info') {
+      const info = `
+Bot ini khusus untuk komunitas Ngabuburit CRAFT
+Owner: Febri
+Nikmati fitur download TikTok & buat stiker!
+      `;
+      await sock.sendMessage(from, { text: info });
+    }
 
-                const outputPath = './sticker.webp';
-                ffmpeg(fileName)
-                    .outputOptions([
-                        '-vcodec libwebp',
-                        '-vf scale=512:512:force_original_aspect_ratio=decrease,fps=15'
-                    ])
-                    .save(outputPath)
-                    .on('end', async () => {
-                        await sock.sendMessage(from, { sticker: fs.readFileSync(outputPath) });
-                        console.log('Sticker sent!');
-                    });
-            } else {
-                sock.sendMessage(from, { text: 'Kirim gambar/video dengan caption !sticker' });
-            }
-        }
+    // Buat stiker dari gambar
+    if (text?.startsWith('!stiker')) {
+      try {
+        if (msg.message.imageMessage || msg.message.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage) {
+          const buffer = msg.message.imageMessage
+            ? Buffer.from(msg.message.imageMessage.data)
+            : Buffer.from(msg.message.extendedTextMessage.contextInfo.quotedMessage.imageMessage.data);
 
-        // TikTok
-        if (text.startsWith('!tiktok ')) {
-            const url = text.split(' ')[1];
-            if (!url) return sock.sendMessage(from, { text: 'Masukkan URL TikTok!' });
-            try {
-                const videoMeta = await TikTokScraper.video(url, { noWaterMark: true });
-                const videoBuffer = await axios.get(videoMeta.videoUrl, { responseType: 'arraybuffer' });
-                await sock.sendMessage(from, { video: videoBuffer.data });
-                console.log('TikTok video sent!');
-            } catch (err) {
-                sock.sendMessage(from, { text: 'Gagal download TikTok!' });
-                console.error(err);
-            }
+          await sock.sendMessage(from, { sticker: buffer });
+        } else {
+          await sock.sendMessage(from, { text: 'Kirim gambar atau reply gambar dengan !stiker' });
         }
+      } catch (e) {
+        console.log(e);
+      }
+    }
 
-        // Owner
-        if (text === '!owner') {
-            sock.sendMessage(from, { text: `Owner: Febri\nNomor: ${ownerNumber}` });
-        }
-
-        // Info
-        if (text === '!info') {
-            sock.sendMessage(from, { text: `Bot: ${botName}\nOwner: Febri\nKomunitas: Ngabuburit CRAFT` });
-        }
-    });
+    // Download TikTok
+    if (text?.startsWith('!tiktok ')) {
+      const url = text.split(' ')[1];
+      try {
+        const videoMeta = await TikTokScraper.getVideoMeta(url, { noWaterMark: true });
+        const videoBuffer = await (await fetch(videoMeta.videoUrl)).arrayBuffer();
+        await sock.sendMessage(from, { video: Buffer.from(videoBuffer), caption: 'Video TikTok' });
+      } catch (e) {
+        await sock.sendMessage(from, { text: 'Gagal download video, pastikan link valid.' });
+      }
+    }
+  });
 }
 
-startBot().catch(err => console.error(err));
+startBot().catch(err => console.log(err));
