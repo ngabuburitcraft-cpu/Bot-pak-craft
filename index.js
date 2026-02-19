@@ -4,6 +4,7 @@ import makeWASocket, {
 } from "@whiskeysockets/baileys";
 import express from "express";
 import pino from "pino";
+import qrcode from "qrcode-terminal";
 
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState("auth");
@@ -11,16 +12,17 @@ async function startBot() {
   const sock = makeWASocket({
     logger: pino({ level: "silent" }),
     auth: state,
-    browser: ["Ubuntu", "Chrome", "20.0.04"]
+    printQRInTerminal: false
   });
 
   sock.ev.on("creds.update", saveCreds);
 
-  sock.ev.on("connection.update", async (update) => {
-    const { connection, lastDisconnect } = update;
+  sock.ev.on("connection.update", (update) => {
+    const { connection, qr, lastDisconnect } = update;
 
-    if (connection === "connecting") {
-      console.log("🔄 Connecting to WhatsApp...");
+    if (qr) {
+      console.log("📱 Scan QR ini:");
+      qrcode.generate(qr, { small: true });
     }
 
     if (connection === "open") {
@@ -32,32 +34,15 @@ async function startBot() {
         lastDisconnect?.error?.output?.statusCode !==
         DisconnectReason.loggedOut;
 
-      console.log("❌ Connection closed. Reconnecting:", shouldReconnect);
-
       if (shouldReconnect) {
         startBot();
       }
     }
   });
-
-  // 🔥 DELAY PAIRING (ANTI PRECONDITION ERROR)
-  setTimeout(async () => {
-    if (!state.creds.registered) {
-      try {
-        console.log("📲 Requesting pairing code...");
-        const code = await sock.requestPairingCode("62881023660529");
-        console.log("🔑 PAIRING CODE:", code);
-      } catch (err) {
-        console.log("❌ Pairing Error:", err?.message || err);
-      }
-    }
-  }, 7000);
 }
 
 startBot();
 
-
-// ===== WAJIB UNTUK RENDER (JANGAN HAPUS) =====
 const app = express();
 const PORT = process.env.PORT || 3000;
 
