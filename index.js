@@ -11,7 +11,7 @@ async function startBot() {
   const sock = makeWASocket({
     logger: pino({ level: "silent" }),
     auth: state,
-    browser: ["Render Bot", "Chrome", "1.0.0"]
+    browser: ["Ubuntu", "Chrome", "20.0.04"]
   });
 
   sock.ev.on("creds.update", saveCreds);
@@ -19,35 +19,45 @@ async function startBot() {
   sock.ev.on("connection.update", async (update) => {
     const { connection, lastDisconnect } = update;
 
-    if (connection === "close") {
-      const shouldReconnect =
-        lastDisconnect?.error?.output?.statusCode !==
-        DisconnectReason.loggedOut;
-
-      console.log("Connection closed. Reconnecting:", shouldReconnect);
-
-      if (shouldReconnect) {
-        startBot();
-      }
+    if (connection === "connecting") {
+      console.log("🔄 Connecting to WhatsApp...");
     }
 
     if (connection === "open") {
       console.log("✅ Bot connected to WhatsApp");
     }
+
+    if (connection === "close") {
+      const shouldReconnect =
+        lastDisconnect?.error?.output?.statusCode !==
+        DisconnectReason.loggedOut;
+
+      console.log("❌ Connection closed. Reconnecting:", shouldReconnect);
+
+      if (shouldReconnect) {
+        startBot();
+      }
+    }
   });
 
-  // 🔥 Pairing Code (AMAN)
-  if (!state.creds.registered) {
-    console.log("Requesting pairing code...");
-    const code = await sock.requestPairingCode("62881023660529");
-    console.log("PAIRING CODE:", code);
-  }
+  // 🔥 DELAY PAIRING (ANTI PRECONDITION ERROR)
+  setTimeout(async () => {
+    if (!state.creds.registered) {
+      try {
+        console.log("📲 Requesting pairing code...");
+        const code = await sock.requestPairingCode("62881023660529");
+        console.log("🔑 PAIRING CODE:", code);
+      } catch (err) {
+        console.log("❌ Pairing Error:", err?.message || err);
+      }
+    }
+  }, 7000);
 }
 
 startBot();
 
 
-// ===== WAJIB UNTUK RENDER =====
+// ===== WAJIB UNTUK RENDER (JANGAN HAPUS) =====
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -56,5 +66,5 @@ app.get("/", (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log("Web server running on port " + PORT);
+  console.log("🌐 Web server running on port " + PORT);
 });
