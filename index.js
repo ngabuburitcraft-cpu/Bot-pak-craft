@@ -1,125 +1,118 @@
-import makeWASocket, { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
-import qrcode from 'qrcode-terminal';
-import express from 'express';
-import fs from 'fs-extra';
-import axios from 'axios';
-import { exec } from 'child_process';
-import path from 'path';
+import { makeWASocket, useMultiFileAuthState, DisconnectReason } from "@whiskeysockets/baileys";
+import fs from "fs";
+import qrcode from "qrcode";
+import axios from "axios";
+import TikTokScraper from "tiktok-scraper";
+import ffmpeg from "fluent-ffmpeg";
+import ffmpegPath from "ffmpeg-static";
 
-// ===== Web server untuk Railway =====
-const app = express();
-const PORT = process.env.PORT || 10000;
+ffmpeg.setFfmpegPath(ffmpegPath);
 
-app.get('/', (req, res) => {
-    res.send('Bot WhatsApp Ngabuburit CRAFT Online 🎉');
+// ===== INFO BOT =====
+const BOT_NAME = "Pak CRAFT";
+const OWNER_NUMBER = "6282258735149"; // Febri
+
+// ===== AUTH =====
+const { state, saveCreds } = await useMultiFileAuthState("auth");
+
+const sock = makeWASocket({
+    auth: state,
+    printQRInTerminal: false, // QR tidak otomatis muncul
 });
 
-app.listen(PORT, () => console.log(`🌐 Web server running on port ${PORT}`));
+sock.ev.on("creds.update", saveCreds);
 
-// ===== Auth =====
-const { state, saveCreds } = await useMultiFileAuthState('auth');
+// ===== QR CODE =====
+sock.ev.on("connection.update", async (update) => {
+    const { connection, lastDisconnect, qr } = update;
 
-async function startBot() {
-    const { version } = await fetchLatestBaileysVersion();
-    const sock = makeWASocket({
-        auth: state,
-        printQRInTerminal: false,
-        version,
-    });
+    if (qr) {
+        await qrcode.toFile("qr.png", qr);
+        console.log(`📲 QR Code dibuat: qr.png → scan pakai WhatsApp HP/Web`);
+    }
 
-    sock.ev.on('creds.update', saveCreds);
+    if (connection === "close") {
+        const status = lastDisconnect?.error?.output?.statusCode;
+        console.log(`❌ Koneksi terputus: ${status}`);
+        if (status !== DisconnectReason.loggedOut) console.log("🔄 Mencoba reconnect...");
+    } else if (connection === "open") {
+        console.log(`✅ ${BOT_NAME} sudah login!`);
+    }
+});
 
-    // ===== QR Code =====
-    sock.ev.on('connection.update', (update) => {
-        if (update.qr) {
-            console.log('📲 QR Code received, scan this dengan WhatsApp:');
-            qrcode.generate(update.qr, { small: true });
-        }
-        if (update.connection === 'close') {
-            console.log('❌ Connection closed. Reconnecting...');
-            if (update.lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut) {
-                startBot();
+// ===== COMMAND HANDLER =====
+sock.ev.on("messages.upsert", async (m) => {
+    const msg = m.messages[0];
+    if (!msg.key.fromMe && msg.message?.conversation) {
+        const text = msg.message.conversation;
+
+        // ===== STICKER BIASA =====
+        if (text.startsWith("!stiker ")) {
+            const url = text.replace("!stiker ", "").trim();
+            const filename = "temp.jpg";
+            try {
+                const resp = await axios({ url, responseType: "arraybuffer" });
+                fs.writeFileSync(filename, Buffer.from(resp.data));
+                await sock.sendMessage(msg.key.remoteJid, { sticker: fs.readFileSync(filename) });
+                fs.unlinkSync(filename);
+            } catch {
+                await sock.sendMessage(msg.key.remoteJid, { text: "❌ Gagal membuat stiker!" });
             }
         }
-        if (update.connection === 'open') {
-            console.log('✅ Connected to WhatsApp!');
-        }
-    });
 
-    // ===== Auto Welcome =====
-    sock.ev.on('messages.upsert', async (m) => {
-        const msg = m.messages[0];
-        if (!msg.key.fromMe && msg.key.remoteJid.endsWith('@g.us') && msg.message?.conversation === 'join') {
-            const jid = msg.key.remoteJid;
-            const welcomeText = `🎉 SELAMAT DATANG MEMBER BARU! 🎉
-Halo dan selamat bergabung di komunitas kita 👋🔥
-Terima kasih sudah join!
-Di sini kita bisa:
-Ngobrol seru bareng 🎮
-Main bareng di server Minecraft ✨
-Ikut event dan fitur menarik lainnya 🚀
-📌 Info penting:
-IP dan Port server ada di deskripsi grup, jadi langsung cek di sana untuk main ya 😉
-Jangan lupa juga join Discord komunitas kita supaya tidak ketinggalan info terbaru 🎧
-Semoga betah, nyaman, dan bisa seru-seruan bareng di sini 💚
-Selamat menikmati keseruan komunitas kita! 🙌
-Owner: Febri`;
-            await sock.sendMessage(jid, { text: welcomeText });
-        }
-    });
+        // ===== STICKER BERGERAK =====
+        if (text.startsWith("!stikergif ")) {
+            const url = text.replace("!stikergif ", "").trim();
+            const input = "temp.mp4";
+            const output = "temp.webp";
 
-    // ===== Commands =====
-    sock.ev.on('messages.upsert', async (m) => {
-        const msg = m.messages[0];
-        if (!msg.key.fromMe) {
-            const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text;
-            const from = msg.key.remoteJid;
-            if (!text) return;
+            try {
+                const resp = await axios({ url, responseType: "arraybuffer" });
+                fs.writeFileSync(input, Buffer.from(resp.data));
 
-            // ===== Stiker =====
-            if (text.startsWith('!sticker')) {
-                const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-                if (quoted && quoted.imageMessage) {
-                    const buffer = await sock.downloadMediaMessage({ message: quoted, type: 'buffer' });
-                    const outPath = './sticker.webp';
-                    fs.writeFileSync(outPath, buffer);
-                    await sock.sendMessage(from, { sticker: fs.readFileSync(outPath) });
-                } else {
-                    await sock.sendMessage(from, { text: 'Balas gambar dengan !sticker untuk membuat stiker.' });
-                }
-            }
+                await new Promise((resolve, reject) => {
+                    ffmpeg(input)
+                        .outputOptions([
+                            "-vcodec libwebp",
+                            "-filter:v fps=fps=15,scale=512:512:flags=lanczos"
+                        ])
+                        .save(output)
+                        .on("end", resolve)
+                        .on("error", reject);
+                });
 
-            // ===== Stiker bergerak =====
-            if (text.startsWith('!gifsticker')) {
-                const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-                if (quoted && quoted.videoMessage) {
-                    const buffer = await sock.downloadMediaMessage({ message: quoted, type: 'buffer' });
-                    const inPath = './input.mp4';
-                    const outPath = './sticker.gif';
-                    fs.writeFileSync(inPath, buffer);
-
-                    exec(`ffmpeg -i ${inPath} -vf "scale=512:512:flags=lanczos:force_original_aspect_ratio=decrease" -t 6 ${outPath}`, async (err) => {
-                        if (err) return console.error(err);
-                        await sock.sendMessage(from, { sticker: fs.readFileSync(outPath) });
-                    });
-                } else {
-                    await sock.sendMessage(from, { text: 'Balas video dengan !gifsticker untuk membuat stiker bergerak.' });
-                }
-            }
-
-            // ===== Download TikTok =====
-            if (text.startsWith('!tiktok ')) {
-                const url = text.replace('!tiktok ', '');
-                try {
-                    const res = await axios.get(`https://api.tiktokv.com/?url=${encodeURIComponent(url)}`, { responseType: 'arraybuffer' });
-                    await sock.sendMessage(from, { video: Buffer.from(res.data) });
-                } catch (e) {
-                    console.error(e);
-                    await sock.sendMessage(from, { text: 'Gagal download video TikTok.' });
-                }
+                await sock.sendMessage(msg.key.remoteJid, { sticker: fs.readFileSync(output) });
+                fs.unlinkSync(input);
+                fs.unlinkSync(output);
+            } catch {
+                await sock.sendMessage(msg.key.remoteJid, { text: "❌ Gagal membuat stiker bergerak!" });
             }
         }
-    });
-}
 
-startBot();
+        // ===== DOWNLOAD TIKTOK =====
+        if (text.startsWith("!tiktok ")) {
+            const url = text.replace("!tiktok ", "").trim();
+
+            try {
+                const videoMeta = await TikTokScraper.getVideoMeta(url, { noWaterMark: true });
+                const videoUrl = videoMeta.collector[0].videoUrl;
+
+                const filename = "tiktok.mp4";
+                const resp = await axios({ url: videoUrl, responseType: "arraybuffer" });
+                fs.writeFileSync(filename, Buffer.from(resp.data));
+
+                await sock.sendMessage(msg.key.remoteJid, { video: fs.readFileSync(filename) });
+                fs.unlinkSync(filename);
+            } catch {
+                await sock.sendMessage(msg.key.remoteJid, { text: "❌ Gagal download video TikTok!" });
+            }
+        }
+
+        // ===== OWNER COMMAND =====
+        if (text.startsWith("!owner") && msg.key.participant?.includes(OWNER_NUMBER)) {
+            await sock.sendMessage(msg.key.remoteJid, { text: `Halo Owner Febri! ${BOT_NAME} aktif dan stabil ✅` });
+        }
+    }
+});
+
+console.log(`🌐 ${BOT_NAME} berjalan, menunggu QR scan...`);
