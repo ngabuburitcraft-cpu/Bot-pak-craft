@@ -6,6 +6,7 @@ import makeWASocket, {
 import express from "express";
 import pino from "pino";
 import QRCode from "qrcode";
+import axios from "axios";
 
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState("auth");
@@ -23,16 +24,13 @@ async function startBot() {
     const { connection, qr, lastDisconnect } = update;
 
     if (qr) {
-      console.log("📱 QR Code Image:");
-
       const qrImage = await QRCode.toDataURL(qr);
-
-      console.log("Open this link in browser:");
+      console.log("📱 Scan QR ini di browser:");
       console.log(qrImage);
     }
 
     if (connection === "connecting") {
-      console.log("🔄 Connecting to WhatsApp...");
+      console.log("🔄 Connecting...");
     }
 
     if (connection === "open") {
@@ -44,10 +42,103 @@ async function startBot() {
         lastDisconnect?.error?.output?.statusCode !==
         DisconnectReason.loggedOut;
 
-      console.log("❌ Connection closed. Reconnecting:", shouldReconnect);
-
       if (shouldReconnect) {
         startBot();
+      }
+    }
+  });
+
+  // ===== COMMAND HANDLER =====
+  sock.ev.on("messages.upsert", async ({ messages }) => {
+    const msg = messages[0];
+    if (!msg.message) return;
+
+    const sender = msg.key.remoteJid;
+    const text =
+      msg.message.conversation ||
+      msg.message.extendedTextMessage?.text;
+
+    if (!text) return;
+    if (!text.startsWith("!")) return;
+
+    const command = text.slice(1).toLowerCase();
+
+    // MENU
+    if (command === "menu") {
+      await sock.sendMessage(sender, {
+        text: `🤖 *BOT MENU*
+
+!menu
+!ping
+!owner
+!info
+!stiker
+!tt link
+
+Ngabuburit Craft 🚀`
+      });
+    }
+
+    // PING
+    if (command === "ping") {
+      await sock.sendMessage(sender, {
+        text: "🏓 Pong! Bot aktif."
+      });
+    }
+
+    // OWNER
+    if (command === "owner") {
+      await sock.sendMessage(sender, {
+        text: "👑 Owner: Riko"
+      });
+    }
+
+    // INFO
+    if (command === "info") {
+      await sock.sendMessage(sender, {
+        text: "📌 Bot WhatsApp Railway Full Version"
+      });
+    }
+
+    // STIKER
+    if (command === "stiker") {
+      if (msg.message.imageMessage) {
+        const buffer = await sock.downloadMediaMessage(msg);
+        await sock.sendMessage(sender, {
+          sticker: buffer
+        });
+      } else {
+        await sock.sendMessage(sender, {
+          text: "Kirim gambar dengan caption !stiker"
+        });
+      }
+    }
+
+    // TIKTOK DOWNLOAD
+    if (command.startsWith("tt ")) {
+      const url = text.split(" ")[1];
+
+      if (!url) {
+        return sock.sendMessage(sender, {
+          text: "Masukkan link TikTok!\nContoh:\n!tt https://vt.tiktok.com/xxxx"
+        });
+      }
+
+      try {
+        const api = await axios.get(
+          `https://api.tiklydown.eu.org/api/download?url=${url}`
+        );
+
+        const videoUrl = api.data.video.noWatermark;
+
+        await sock.sendMessage(sender, {
+          video: { url: videoUrl },
+          caption: "🎬 TikTok Downloader\nNo Watermark ✅"
+        });
+      } catch (err) {
+        await sock.sendMessage(sender, {
+          text: "Gagal download video."
+        });
       }
     }
   });
@@ -55,6 +146,7 @@ async function startBot() {
 
 startBot();
 
+// ===== EXPRESS SERVER =====
 const app = express();
 const PORT = process.env.PORT || 3000;
 
