@@ -1,22 +1,32 @@
 {
   "name": "pak-craft-bot",
   "version": "1.0.0",
-  "description": "Bot WhatsApp khusus komunitas Ngabuburit CRAFT - Owner Febri",
+  "description": "Bot WhatsApp komunitas Ngabuburit CRAFT. Fitur: sticker, TikTok download, info bot, owner.",
   "main": "index.js",
   "type": "module",
   "scripts": {
     "start": "node index.js"
   },
-  "dependencies": {
-    "@whiskeysockets/baileys": "^5.0.0",
-    "axios": "^1.6.0",
-    "fluent-ffmpeg": "^2.1.2",
-    "ffmpeg-static": "^5.1.0",
-    "fs-extra": "^11.1.1",
-    "qrcode": "^1.5.1",
-    "tiktok-scraper": "^1.5.5"
-  },
+  "keywords": [
+    "whatsapp",
+    "bot",
+    "baileys",
+    "sticker",
+    "tiktok",
+    "ngabuburit"
+  ],
+  "author": "Febri",
+  "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^5.0.11",
+    "axios": "^1.6.6",
+    "ffmpeg-static": "^5.1.0",
+    "fluent-ffmpeg": "^2.1.2",
+    "fs-extra": "^11.1.1",
+    "qrcode": "^1.5.1",
+    "tiktok-scraper": "^1.4.6"
   }
 }
